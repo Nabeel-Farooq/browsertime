@@ -48,7 +48,7 @@ an issue so we can discuss
 
 ## Setup for development
 
-Clone the repo: ```git clone https://github.com/seanmiller802/browsertime```
+Clone the repo: ```git clone https://github.com/Nabeel-Farooq/browsertime```
 
 Install the dependencies: ``` npm run install```
 
