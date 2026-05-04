@@ -1,21 +1,67 @@
-var hostname = window.location.hostname;
-if (hostname.substring(0, 4) === 'www.') {
-  hostname = hostname.substring(4);
+let hostname = window.location.hostname;
+
+// Normalize hostname (better than only stripping "www.")
+hostname = hostname.replace(/^www\./, "");
+
+// Current session state
+let currentSession = createSession();
+
+
+function createSession() {
+  return {
+    start: Date.now(),
+    end: null,
+    duration: 0
+  };
 }
 
-var currentSession = { start: Date.now() };
 
-// listen for changes to a page's visibility.
-// when a page loses visibility send the session data to the background script
-// when a page becomes visibile start a new session
-document.addEventListener("visibilitychange", function() {
-  if (document.visibilityState === 'visible') {
-    currentSession = { start: Date.now() };
-  } else {
+// -------------------- VISIBILITY TRACKING --------------------
+document.addEventListener("visibilitychange", () => {
+  try {
+    if (document.visibilityState === "visible") {
+      currentSession = createSession();
+      return;
+    }
+
+    if (document.visibilityState === "hidden") {
+      currentSession.end = Date.now();
+      currentSession.duration = currentSession.end - currentSession.start;
+
+      chrome.runtime.sendMessage(
+        {
+          from: hostname,
+          session: currentSession
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn("Message failed:", chrome.runtime.lastError.message);
+            return;
+          }
+
+          console.log("Session sent:", response);
+        }
+      );
+
+      currentSession = createSession();
+    }
+  } catch (err) {
+    console.error("Visibility handler error:", err);
+  }
+});
+
+
+// -------------------- SAFETY: TAB CLOSE FALLBACK --------------------
+window.addEventListener("beforeunload", () => {
+  try {
     currentSession.end = Date.now();
-    chrome.runtime.sendMessage({ from: hostname, session: currentSession }, function(response) {
-      console.log('message response:', response);
-      currentSession = { };
+    currentSession.duration = currentSession.end - currentSession.start;
+
+    chrome.runtime.sendMessage({
+      from: hostname,
+      session: currentSession
     });
+  } catch (e) {
+    console.warn("beforeunload send failed");
   }
 });
