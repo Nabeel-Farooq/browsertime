@@ -1,29 +1,52 @@
+// -------------------- INIT STORAGE --------------------
+chrome.runtime.onInstalled.addListener(async () => {
+  const data = await chrome.storage.local.get("sessions");
+  if (!data.sessions) {
+    await chrome.storage.local.set({ sessions: {} });
+  }
 
-// TODO:FIX
-// after installing the extension, the content script isn't added to a tab until it has been refreshed
-// if a user views an existing tab without refreshing no time tracking can occur
-
-// setup local storage to hold page sessions
-chrome.runtime.onInstalled.addListener(function() {
-    localStorage.setItem('sessions', JSON.stringify({}));
+  // 🔥 Inject content scripts into already open tabs
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (tab.id && tab.url?.startsWith("http")) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ["content.js"] // 👈 your content script file
+        });
+      } catch (err) {
+        console.warn("Injection failed:", tab.url);
+      }
+    }
+  }
 });
 
 
-// receives sessions from pages that contain the content script
-// and stores them in the extension's local storage
-chrome.runtime.onMessage.addListener(
-    function(request, sender, sendResponse) {
-        try {
-            var sessions = JSON.parse(localStorage.getItem('sessions'));
-            if (!sessions[request.from]) {
-                sessions[request.from] = { sessions: [] };
-            }
-            sessions[request.from].sessions.push(request.session);
-    
-            localStorage.setItem('sessions', JSON.stringify(sessions));
-            sendResponse('session added');
-        } catch (e) {
-            sendResponse('error recording session');
-        }
-    }
-);
+// -------------------- MESSAGE HANDLER --------------------
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (!request?.from || !request?.session) {
+    sendResponse({ status: "error", message: "Invalid request" });
+    return;
+  }
+
+  handleSession(request)
+    .then(() => sendResponse({ status: "ok" }))
+    .catch(() => sendResponse({ status: "error" }));
+
+  return true; // 🔥 Required for async response
+});
+
+
+// -------------------- SESSION HANDLER --------------------
+async function handleSession(request) {
+  const data = await chrome.storage.local.get("sessions");
+  const sessions = data.sessions || {};
+
+  if (!sessions[request.from]) {
+    sessions[request.from] = { sessions: [] };
+  }
+
+  sessions[request.from].sessions.push(request.session);
+
+  await chrome.storage.local.set({ sessions });
+}
