@@ -1,6 +1,5 @@
-/* eslint-disable max-len */
 /* eslint-disable react/jsx-filename-extension */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import { CssBaseline } from '@material-ui/core';
 import { ThemeProvider } from './context/ThemeContext';
@@ -28,14 +27,13 @@ const useStyles = makeStyles(() => ({
 
 const App = () => {
   const classes = useStyles();
-  const [selectedForDelete, setSelectedForDelete] = useState([]); // history items currently selected for deletion
-  const [clearSelected, setClearSelected] = useState(false); // use this instead of selectedForDelete to trigger useEffect
-  const [showConfirmDelete, setShowConfirmDelete] = useState(false); // comfirmation dialog when deleting all history
+
+  const [selectedForDelete, setSelectedForDelete] = useState([]);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
-  const [showControls, setShowControls] = useState(false); // show filter controls
+  const [showControls, setShowControls] = useState(false);
 
-  // history search values
   const [searchText, setSearchText] = useState('');
   const [range, setRange] = useState('Today');
   const [customRange, setCustomRange] = useState({
@@ -46,27 +44,38 @@ const App = () => {
 
   const [history, setHistory] = useState([]);
 
-  // update history results if any of the controls change
+  // 🔁 Fetch history
   useEffect(() => {
-    const searchParams = getSearchParams(searchText, range, customRange, maxResults);
-    searchHistory(searchParams)
-      .then((results) => {
-        const sortedHistory = groupHistoryByDate(results);
-        setHistory(sortedHistory);
-      })
-      .catch((error) => console.error('App useEffect error getting history', error));
-  }, [clearSelected, searchText, range, customRange, maxResults]);
+    let isMounted = true;
 
-  const forceUpdate = () => {
-    setClearSelected(!clearSelected);
-  };
+    const fetchHistory = async () => {
+      try {
+        const searchParams = getSearchParams(searchText, range, customRange, maxResults);
+        const results = await searchHistory(searchParams);
+        if (!isMounted) return;
+
+        setHistory(groupHistoryByDate(results));
+      } catch (error) {
+        console.error('Error getting history', error);
+        if (isMounted) setHistory([]);
+      }
+    };
+
+    fetchHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchText, range, customRange, maxResults]);
+
+  // 🔄 Refresh manually (after delete)
+  const refreshHistory = useCallback(() => {
+    setSearchText((prev) => prev); // triggers effect without fake state
+  }, []);
 
   const handleUpdateRange = (val) => {
     setShowDashboard(false);
-    // always show filter controls when custom range is selected
-    if (val === 'Custom') {
-      setShowControls(true);
-    }
+    if (val === 'Custom') setShowControls(true);
     setRange(val);
   };
 
@@ -75,67 +84,48 @@ const App = () => {
     setRange(null);
   };
 
-  const handleShowFeedbackForm = () => {
-    setShowFeedbackForm(true);
+  const getSelectedIndex = useCallback(
+    (item) => selectedForDelete.findIndex((e) => e.lastVisitTime === item.lastVisitTime),
+    [selectedForDelete]
+  );
+
+  const toggleSelectItem = (item) => {
+    setSelectedForDelete((prev) => {
+      const exists = prev.some((e) => e.lastVisitTime === item.lastVisitTime);
+      return exists
+        ? prev.filter((e) => e.lastVisitTime !== item.lastVisitTime)
+        : [...prev, item];
+    });
   };
 
-  // use lastVisitTime to check if an item is selected for deletion
-  // PRETTY sure no two items should ever have the same value
-  const getSelectedForDeleteIndex = ({ lastVisitTime }) => selectedForDelete
-    .map((e) => e.lastVisitTime)
-    .indexOf(lastVisitTime);
-
-  // remove item if already selected. add otherwise.
-  const handleSelectedForDelete = (item) => {
-    const index = getSelectedForDeleteIndex(item);
-    let updated;
-    if (index > -1) {
-      updated = Array.apply([], selectedForDelete);
-      updated.splice(index, 1);
-      setSelectedForDelete(updated);
-    } else {
-      updated = selectedForDelete.concat([item]);
-      setSelectedForDelete(updated);
+  const handleDeleteItems = async () => {
+    try {
+      await deleteHistoryItems(selectedForDelete);
+      setSelectedForDelete([]);
+      refreshHistory();
+    } catch (error) {
+      console.error('Error deleting selected history items', error);
     }
   };
 
-  // delete selected items
-  const handleDeleteItems = () => {
-    deleteHistoryItems(selectedForDelete)
-      .then(() => {
-        setSelectedForDelete([]);
-        forceUpdate();
-      })
-      .catch((error) => console.error('Error deleting selected history items', error));
+  const handleDeleteSingleItem = async (item) => {
+    try {
+      await deleteHistoryItems([item]);
+      setSelectedForDelete([]);
+      refreshHistory();
+    } catch (error) {
+      console.error('Error deleting single history item', error);
+    }
   };
 
-  // delete single history item
-  const handleDeleteSingleItem = (item) => {
-    deleteHistoryItems([item])
-      .then(() => {
-        setSelectedForDelete([]);
-        forceUpdate();
-      })
-      .catch((error) => console.error('Error deleting single history item', error));
-  };
-
-  // delete entire history
-  const handleDeleteAll = () => {
-    deleteAllHistory()
-      .then(() => {
-        setShowConfirmDelete(false);
-      })
-      .catch((error) => console.error('Error deleting history items', error));
-  };
-
-  // get history results using the url as searchText
-  const handleMoreFromThisSite = (text) => {
-    setSearchText(text);
-    setShowControls(true);
-  };
-
-  const handleSearchTextChange = (val) => {
-    setSearchText(val);
+  const handleDeleteAll = async () => {
+    try {
+      await deleteAllHistory();
+      setShowConfirmDelete(false);
+      refreshHistory();
+    } catch (error) {
+      console.error('Error deleting all history', error);
+    }
   };
 
   const showDeleteToolbar = selectedForDelete.length > 0;
@@ -145,36 +135,42 @@ const App = () => {
       <SettingsProvider>
         <ThemeProvider>
           <CssBaseline />
+
           <ConfirmDeleteDialog
             open={showConfirmDelete}
             deleteAll={handleDeleteAll}
             cancel={() => setShowConfirmDelete(false)}
           />
+
           {showFeedbackForm && (
             <FeedbackDialog
               open={showFeedbackForm}
               cancel={() => setShowFeedbackForm(false)}
             />
           )}
-          {showDeleteToolbar && (
+
+          {showDeleteToolbar ? (
             <DeleteToolbar
               count={selectedForDelete.length}
               cancel={() => setSelectedForDelete([])}
-              deleteItems={() => handleDeleteItems()}
+              deleteItems={handleDeleteItems}
             />
+          ) : (
+            <Header />
           )}
-          {!showDeleteToolbar && <Header /> }
+
           <CustomDrawer
             range={range}
             handleUpdateRange={handleUpdateRange}
             handleShowDashboard={handleShowDashboard}
-            handleShowFeedbackForm={handleShowFeedbackForm}
+            handleShowFeedbackForm={() => setShowFeedbackForm(true)}
           />
-          {!showDashboard && (
+
+          {!showDashboard ? (
             <History
               history={history}
               searchText={searchText}
-              setSearchText={handleSearchTextChange}
+              setSearchText={setSearchText}
               showControls={showControls}
               setShowControls={setShowControls}
               handleDeleteAll={() => setShowConfirmDelete(true)}
@@ -184,14 +180,17 @@ const App = () => {
               handleUpdateCustomRange={setCustomRange}
               maxResults={maxResults}
               setMaxResults={setMaxResults}
-              getSelectedForDeleteIndex={getSelectedForDeleteIndex}
-              handleSelectedForDelete={handleSelectedForDelete}
-              handleMoreFromThisSite={handleMoreFromThisSite}
+              getSelectedForDeleteIndex={getSelectedIndex}
+              handleSelectedForDelete={toggleSelectItem}
+              handleMoreFromThisSite={(text) => {
+                setSearchText(text);
+                setShowControls(true);
+              }}
               handleDeleteSingleItem={handleDeleteSingleItem}
-              forceUpdate={forceUpdate}
             />
+          ) : (
+            <Dashboard />
           )}
-          {showDashboard && <Dashboard />}
         </ThemeProvider>
       </SettingsProvider>
     </div>
