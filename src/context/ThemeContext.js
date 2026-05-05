@@ -1,34 +1,29 @@
 /* eslint-disable react/jsx-filename-extension */
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { ThemeProvider as MuiThemeProvider } from '@material-ui/styles';
 import { createTheme } from '../lib/theme/index';
 import { SettingsContext } from './SettingsContext';
 
-export const ThemeContext = createContext();
+export const ThemeContext = createContext(null);
 ThemeContext.displayName = 'ThemeContext';
 
 export const ThemeProvider = ({ children }) => {
-  // eslint-disable-next-line no-unused-vars
-  const { settingsState, updateSettings } = useContext(SettingsContext);
-  const currentTheme = createTheme(settingsState.theme);
+  const { settingsState } = useContext(SettingsContext);
+
+  const theme = useMemo(() => {
+    return createTheme(settingsState.theme);
+  }, [settingsState.theme]);
 
   return (
-    <ThemeContext.Provider value={currentTheme}>
-      <ThemeContext.Consumer>
-        {(value) => (
-          <MuiThemeProvider theme={value}>
-            {children}
-          </MuiThemeProvider>
-        )}
-      </ThemeContext.Consumer>
+    <ThemeContext.Provider value={theme}>
+      <MuiThemeProvider theme={theme}>
+        {children}
+      </MuiThemeProvider>
     </ThemeContext.Provider>
   );
 };
 
 ThemeProvider.propTypes = {
-  children: PropTypes.oneOfType([
-    PropTypes.arrayOf(PropTypes.node),
-    PropTypes.node,
-  ]).isRequired,
+  children: PropTypes.node.isRequired,
 };
