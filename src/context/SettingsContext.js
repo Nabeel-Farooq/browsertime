@@ -3,31 +3,52 @@ import React, {
   createContext,
   useReducer,
   useEffect,
+  useCallback,
 } from 'react';
 import PropTypes from 'prop-types';
 import { settingsReducer } from '../reducers/settingsReducer';
 import { THEMES } from '../lib/constants/index';
 
-export const SettingsContext = createContext();
+export const SettingsContext = createContext(null);
 SettingsContext.displayName = 'SettingsContext';
 
-export const SettingsProvider = ({ children }) => {
-  const [settingsState, dispatch] = useReducer(settingsReducer, {}, () => {
+const DEFAULT_SETTINGS = {
+  theme: THEMES.DARK,
+  showResultsCount: true,
+};
+
+const init = () => {
+  try {
     const localData = localStorage.getItem('settings');
-    return localData ? JSON.parse(localData) : { theme: THEMES.DARK, showResultsCount: true };
-  });
+    return localData ? JSON.parse(localData) : DEFAULT_SETTINGS;
+  } catch (e) {
+    // fallback if JSON is corrupted or access fails
+    return DEFAULT_SETTINGS;
+  }
+};
+
+export const SettingsProvider = ({ children }) => {
+  const [settingsState, dispatch] = useReducer(
+    settingsReducer,
+    DEFAULT_SETTINGS,
+    init
+  );
 
   useEffect(() => {
-    localStorage.setItem('settings', JSON.stringify(settingsState));
+    try {
+      localStorage.setItem('settings', JSON.stringify(settingsState));
+    } catch (e) {
+      // ignore write errors (e.g. quota exceeded)
+    }
   }, [settingsState]);
 
-  const updateSettings = (settingName, settingValue) => {
+  const updateSettings = useCallback((settingName, settingValue) => {
     dispatch({
       type: 'UPDATE_SETTINGS',
       settingName,
       settingValue,
     });
-  };
+  }, []);
 
   return (
     <SettingsContext.Provider
@@ -36,9 +57,7 @@ export const SettingsProvider = ({ children }) => {
         updateSettings,
       }}
     >
-      <SettingsContext.Consumer>
-        {() => children}
-      </SettingsContext.Consumer>
+      {children}
     </SettingsContext.Provider>
   );
 };
