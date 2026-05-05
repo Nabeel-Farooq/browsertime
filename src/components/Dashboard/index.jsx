@@ -16,79 +16,125 @@ import CategoryPie from './CategoryPie';
 import SkeletonCardSmall from './SkeletonCardSmall';
 import TopSitesSkeleton from './TopSitesSkeleton';
 import { getSearchParams, searchHistory } from '../../lib/helpers/chrome-helpers';
-import { groupHistoryByDate, groupHistoryByHour, enrichHistory } from '../../lib/helpers/history-helpers';
+import {
+  groupHistoryByDate,
+  groupHistoryByHour,
+  enrichHistory,
+} from '../../lib/helpers/history-helpers';
+
+const EMPTY_HISTORY = {
+  data: [],
+  timeData: [],
+  mostVisited: 'NA',
+  topCategory: 'NA',
+  totalUniqueSites: 'NA',
+  percentChange: 'NA',
+  categoryBreakdown: [],
+};
 
 const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [history, setHistory] = useState({});
+  const [history, setHistory] = useState(EMPTY_HISTORY);
 
   useEffect(() => {
-    const searchParams = getSearchParams('', 'Fourteen', {}, 10000);
-    searchHistory(searchParams)
-      .then(async (results) => {
-        if (results.length < 1) {
-          setHistory({
-            data: [],
-            timeData: [],
-            mostVisited: 'NA',
-            topCategory: 'NA',
-            totalUniqueSites: 'NA',
-            percentChange: 'NA',
-            categoryBreakdown: [],
-          });
+    let isMounted = true;
+
+    const fetchHistory = async () => {
+      try {
+        const searchParams = getSearchParams('', 'Fourteen', {}, 10000);
+        const results = await searchHistory(searchParams);
+
+        if (!isMounted) return;
+
+        if (!results?.length) {
+          setHistory(EMPTY_HISTORY);
         } else {
           const groupedByDate = groupHistoryByDate(results);
           const groupedByHour = groupHistoryByHour(results);
-          const enrichedHistory = enrichHistory(groupedByDate);
-          setHistory({ ...enrichedHistory, timeData: groupedByHour });
+          const enriched = enrichHistory(groupedByDate);
+
+          setHistory({
+            ...enriched,
+            timeData: groupedByHour,
+          });
         }
-        setIsLoading(false);
-      })
-      .catch((error) => console.error('Error getting history', error)); // HANDLE THIS
+      } catch (error) {
+        console.error('Error getting history', error);
+        if (isMounted) setHistory(EMPTY_HISTORY);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    fetchHistory();
+
+    return () => {
+      isMounted = false; // prevents state update on unmounted component
+    };
   }, []);
 
   return (
     <Layout>
-      <Grid
-        container
-        spacing={4}
-        direction="row"
-        justify="center"
-      >
+      <Grid container spacing={4} justifyContent="center">
         <Grid item xs={12}>
-          <Breadcrumbs aria-label="breadcrumb" gutterBottom>
-            <Link color="inherit" href="/" onClick={() => {}}>
+          <Breadcrumbs aria-label="breadcrumb">
+            <Link color="inherit" href="/">
               Insights
             </Link>
             <Typography color="textPrimary">Dashboard</Typography>
           </Breadcrumbs>
-          <Typography variant="h3">This week&#39;s overview</Typography>
+
+          <Typography variant="h3">
+            This week&#39;s overview
+          </Typography>
         </Grid>
+
         <Grid item xs={3}>
-          { isLoading ? <SkeletonCardSmall /> : <MostVisitedSite value={history.mostVisited} />}
+          {isLoading ? <SkeletonCardSmall /> : <MostVisitedSite value={history.mostVisited} />}
         </Grid>
+
         <Grid item xs={3}>
-          {isLoading ? <SkeletonCardSmall />
-            : <TotalUniqueSites value={history.totalUniqueSites} />}
+          {isLoading ? <SkeletonCardSmall /> : <TotalUniqueSites value={history.totalUniqueSites} />}
         </Grid>
+
         <Grid item xs={3}>
           {isLoading ? <SkeletonCardSmall /> : <TopCategory value={history.topCategory} />}
         </Grid>
+
         <Grid item xs={3}>
-          {isLoading ? <SkeletonCardSmall />
-            : <EstimatedTimeBrowsing value={history.percentChange} />}
+          {isLoading ? <SkeletonCardSmall /> : <EstimatedTimeBrowsing value={history.percentChange} />}
         </Grid>
+
         <Grid item xs={3}>
           {isLoading ? <TopSitesSkeleton /> : <CategoryPie data={history.categoryBreakdown} />}
         </Grid>
+
         <Grid item xs={9}>
-          {isLoading ? <TopSitesSkeleton /> : <WeeklyUsageCard data={history.data} title="Last 7 days by category" chartType="category" />}
+          {isLoading ? (
+            <TopSitesSkeleton />
+          ) : (
+            <WeeklyUsageCard
+              data={history.data}
+              title="Last 7 days by category"
+              chartType="category"
+            />
+          )}
         </Grid>
+
         <Grid item xs={3}>
           {isLoading ? <TopSitesSkeleton /> : <TopSitesCard />}
         </Grid>
+
         <Grid item xs={9}>
-          {isLoading ? <TopSitesSkeleton /> : <WeeklyUsageCard data={history.timeData} title="Last 7 days by hour" chartType="time" />}
+          {isLoading ? (
+            <TopSitesSkeleton />
+          ) : (
+            <WeeklyUsageCard
+              data={history.timeData}
+              title="Last 7 days by hour"
+              chartType="time"
+            />
+          )}
         </Grid>
       </Grid>
     </Layout>
