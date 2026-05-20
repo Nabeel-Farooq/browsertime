@@ -1,15 +1,20 @@
-/* eslint-disable react/jsx-filename-extension */
-import '@babel/polyfill';
-import React from 'react';
-import ReactDOM from 'react-dom';
-import App from './App';
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
 
-// tell webpack to accept the updated module
-if (module.hot) {
-  module.hot.accept();
+// Vite HMR (built-in, no module.hot needed)
+if (import.meta.hot) {
+  import.meta.hot.accept()
 }
 
-ReactDOM.render(
-  <App />,
-  document.getElementById('root'),
-);
+const rootElement = document.getElementById('root')
+
+if (!rootElement) {
+  throw new Error('Root element not found')
+}
+
+ReactDOM.createRoot(rootElement).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+)
